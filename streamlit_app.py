@@ -20,8 +20,6 @@ if 'missing_columns_flag' not in st.session_state:
     st.session_state.missing_columns_flag = False
 if 'categories_issues' not in st.session_state:
     st.session_state.categories_issues = pd.DataFrame()
-if 'valid_device_categories' not in st.session_state:
-    st.session_state.valid_device_categories = []
 if 'selected_replacements' not in st.session_state:
     st.session_state.selected_replacements = {}
 if 'category_checked' not in st.session_state:
@@ -45,7 +43,6 @@ def reset_state():
     st.session_state.df = None
     st.session_state.missing_columns_flag = False
     st.session_state.categories_issues = pd.DataFrame()
-    st.session_state.valid_device_categories = []
     st.session_state.selected_replacements = {}
     st.session_state.category_checked = False
     st.session_state.show_updated_df = False
@@ -72,6 +69,11 @@ def on_check_countries():
         st.session_state.df, st.session_state.countries_issues = countries_check(st.session_state.df)
         st.session_state.show_updated_df = False
 
+def on_check_categories():
+    if st.session_state.df is not None:
+        st.session_state.df, st.session_state.categories_issues, valid_device_categories = category_check(st.session_state.df)
+        st.session_state.show_updated_df = False
+
 # Add your logo at the top
 st.image("Sopht_logo.png", width=150)  # Adjust the width as needed
 
@@ -96,7 +98,7 @@ if st.button("Start/Restart"):
         st.error("Please upload one or more files.")
 
 # Create tabs
-tabs = st.tabs(["Step 1: Map Your Columns", "Step 2: Clean Your Categories", "Step 3: Clean Your Dates", "Step 4:Clean Your Countries"])
+tabs = st.tabs(["Step 1: Map Your Columns", "Step 2: Check all problems", "Step 3: Null Values", "Step 4: Clean Your Categories", "Step 5: Clean Your Dates", "Step 6:Clean Your Countries"])
 
 with tabs[0]:
     st.header("Step 1: Map Your Columns")
@@ -200,95 +202,168 @@ with tabs[0]:
             st.write("This is the updated version of your data:")
             st.write(st.session_state.df)
 
-with tabs[1]:
-    st.header("Step 2: Clean Your Data (Categories)")
 
-    st.write("Click the button below to check for issues with device categories in your data.")
+# Define the fragment for checking all errors 
+@st.fragment
+def check_all_errors():
+    #check for formating issues 
 
-    # Check categories button
-    check_button = st.button("Check categories")
+    #check for null values 
+    null_issues = st.session_state.df[st.session_state.df[required_columns].isnull().any(axis=1)]
 
-    if check_button or st.session_state.category_checked:
-        if not st.session_state.category_checked:
-            # Run category check
-            st.session_state.df, st.session_state.categories_issues, st.session_state.valid_device_categories = category_check(st.session_state.df)
-            st.session_state.category_checked = True
+    #check for category issues 
 
-        if st.session_state.categories_issues.empty:
-            st.success("No issues found! Your data is clean.")
-            st.session_state.show_updated_df = False  # Do not show updated DataFrame if there are no issues
-        else:
-            st.error("You have categories that are not allowed. Please replace those with allowed values.")
-            problematic_categories = st.session_state.categories_issues['deviceCategory'].unique()
 
-            ### Option 1: Replace All by Form ###
-            st.markdown("### Option 1: Replace All Problematic Categories")
-            with st.form(key='replace_all_form'):
-                replace_all_by = st.selectbox(
-                    "Replace all problematic categories by:",
-                    options=["Select an option"] + st.session_state.valid_device_categories,
-                    key="replace_all_by_select"
-                )
-                replace_all_button = st.form_submit_button("Replace All")
+# Define the fragment for null values in mandatory columns
+@st.fragment
+def check_null_values_fragment(null_issues):
+    
+    if not null_issues.empty:
+        st.error("There are rows with missing values in mandatory columns.")
+        issue_rows = null_issues.index
 
-                if replace_all_button and replace_all_by != "Select an option":
-                    for category in problematic_categories:
-                        st.session_state.df.loc[st.session_state.df['deviceCategory'] == category, 'deviceCategory'] = replace_all_by
-                    st.success(f"All problematic categories replaced with '{replace_all_by}'.")
-                    st.session_state.show_updated_df = True
+        st.markdown("### Option 1: Ignore All Problematic Rows")
+        st.write("Those rows will be added to an 'ignored_rows' file that you can download at the end.")
+        if st.button("Ignore All Rows", key="null_ignore"):
+            update_ignore_df(null_issues)
+            update_df(st.session_state.df.drop(issue_rows))
+            st.write("These are the rows that were ignored:")
+            st.write(st.session_state.ignore_df)
+            st.write("This is the updated dataset you are working on:")
+            st.write(st.session_state.df)
 
-            ### Option 2: Ignore those rows ###
-            st.markdown("### Option 2: Ignore all Problematic Rows.")
-            st.write("Those rows will be added to an 'ignored_rows' file that you can download at the end.")
-            with st.form(key='ignore_all'):
-
-                # Button to process ignoring rows
-                ignore_button = st.form_submit_button("Ignore All Rows")
-                if ignore_button:
-                    # Remove the ignored rows from the original DataFrame
-                    st.session_state.ignore_df = pd.concat([st.session_state.ignore_df, st.session_state.df[st.session_state.df['deviceCategory'].isin(problematic_categories)]])
-                    st.session_state.df = st.session_state.df[~st.session_state.df['deviceCategory'].isin(problematic_categories)]
-                    st.write("The following rows were added to an ignored dataset and deleted from the working dataset:")
-                    st.write(st.session_state.ignore_df)
-                    st.session_state.show_updated_df = True
-
-            ### Option 3: Replace Individually Form ###
-            st.markdown("### Option 3: Replace Categories Individually")
-            with st.form(key='category_cleanup_form'):
-                for category in problematic_categories:
-                    count = st.session_state.categories_issues[st.session_state.categories_issues['deviceCategory'] == category].shape[0]
-                    st.markdown(f"**Problematic Category:** `{category}`")
-                    st.markdown(f"**Number of Rows:** `{count}`")
-
-                    if category not in st.session_state.selected_replacements:
-                        st.session_state.selected_replacements[category] = st.session_state.valid_device_categories[0]  # Default to the first valid category
-
-                    st.session_state.selected_replacements[category] = st.selectbox(
-                        f"Select a valid category for '{category}':",
-                        options=st.session_state.valid_device_categories,
-                        key=f"select_{category}"
+        st.markdown("### Option 2: Replace All Problematic By Hand")
+        with st.form(key='edit_form_nulls'):
+            edited_dfs = {}
+            for col in required_columns:
+                col_null_issues = null_issues[null_issues[col].isnull()]  # Filter for null values in the current column
+                if not col_null_issues.empty:
+                    st.write(f"Please edit the column {col} with missing values:")
+                    edited_dfs[col] = st.data_editor(
+                        col_null_issues,
+                        key=f"manual_null_editor_{col}",
+                        column_config={col: st.column_config.TextColumn(label=f"{col}", required=True)}
                     )
 
-                apply_button = st.form_submit_button("Apply Individually")
+            if st.form_submit_button(label='Apply All'):
+                for col, edited_df in edited_dfs.items():
+                    for index, row in edited_df.iterrows():
+                        st.session_state.df.loc[index, col] = row[col]
+                st.success("Changes have been applied successfully!")
+                st.session_state.show_updated_df = True
 
-                if apply_button:
-                    for category, replacement in st.session_state.selected_replacements.items():
-                        st.session_state.df.loc[st.session_state.df['deviceCategory'] == category, 'deviceCategory'] = replacement
-                    st.success("Individual replacements applied.")
-                    st.session_state.show_updated_df = True
+    else:
+        st.success("You have no issues with missing values, you can continue to the next step.")
+
+    if st.session_state.show_updated_df:
+        st.success("Manual changes have been applied. You can proceed to the next step. Here is the updated data:")
+        st.write(st.session_state.df)
+
+
+# Define the fragment for category check
+@st.fragment
+def check_categories_fragment():
+
+    # Run category check
+    st.session_state.df, st.session_state.categories_issues, valid_device_categories = category_check(st.session_state.df)
+    st.session_state.show_updated_df = False
+    problematic_categories = st.session_state.categories_issues['deviceCategory'].unique()
+    rows_with_issues = st.session_state.df[st.session_state.df['deviceCategory'].isin(problematic_categories)]
+
+    if not st.session_state.categories_issues.empty:
+        st.error("You have categories that are not allowed. Please replace those with allowed values.")
+
+        ### Option 1: Replace All by Form ###
+        st.markdown("### Option 1: Replace All Problematic Categories")
+        with st.form(key='replace_all_form'):
+            replace_all_by = st.selectbox(
+                "Replace all problematic categories by:",
+                options=["Select an option"] + valid_device_categories,
+                key="replace_all_by_select"
+            )
+            replace_all_button = st.form_submit_button("Replace All")
+
+            if replace_all_button and replace_all_by != "Select an option":
+                for category in problematic_categories:
+                    st.session_state.df.loc[st.session_state.df['deviceCategory'] == category, 'deviceCategory'] = replace_all_by
+                st.success(f"All problematic categories replaced with '{replace_all_by}'.")
+                st.session_state.show_updated_df = True
+
+        ### Option 2: Ignore those rows ###
+        st.markdown("### Option 2: Ignore all Problematic Rows")
+        st.write("Those rows will be added to an 'ignored_rows' file that you can download at the end.")
+        with st.form(key='ignore_all'):
+
+            # Button to process ignoring rows
+            ignore_button = st.form_submit_button("Ignore All Rows")
+            if ignore_button:
+                # Remove the ignored rows from the original DataFrame
+                st.session_state.ignore_df = pd.concat([st.session_state.ignore_df, rows_with_issues])
+                st.session_state.df = st.session_state.df[~st.session_state.df['deviceCategory'].isin(problematic_categories)]
+                st.write("The following rows were added to an ignored dataset and deleted from the working dataset:")
+                st.write(st.session_state.ignore_df)
+                st.session_state.show_updated_df = True
+
+        ### Option 3: Replace In Bulk Form ###
+        st.markdown("### Option 3: Replace Categories In Bulk")
+        with st.form(key='category_cleanup_form'):
+            for category in problematic_categories:
+                count = st.session_state.categories_issues[st.session_state.categories_issues['deviceCategory'] == category].shape[0]
+                st.markdown(f"**Problematic Category:** `{category}`")
+                st.markdown(f"**Number of Rows:** `{count}`")
+
+                if category not in st.session_state.selected_replacements:
+                    st.session_state.selected_replacements[category] = valid_device_categories[0]  # Default to the first valid category
+
+                st.session_state.selected_replacements[category] = st.selectbox(
+                    f"Select a valid category for '{category}':",
+                    options=valid_device_categories,
+                    key=f"select_{category}"
+                )
+
+            apply_button = st.form_submit_button("Apply Individually")
+
+            if apply_button:
+                for category, replacement in st.session_state.selected_replacements.items():
+                    st.session_state.df.loc[st.session_state.df['deviceCategory'] == category, 'deviceCategory'] = replacement
+                st.success("Individual replacements applied.")
+                st.session_state.show_updated_df = True
+        
+        ### Option 3: Replace Individually Form ###
+        st.markdown("### Option 4: Replace All Problematic Rows By Hand")
+
+        with st.form(key='edit_form_country'):
+            edited_df = st.data_editor(
+                rows_with_issues,
+                key="manual_category_editor",
+                column_config={
+                    "country": st.column_config.SelectboxColumn(
+                        f"Select a valid category for '{category}':",
+                        help="Enter a valid category from the list.",
+                        options=valid_device_categories,
+                        required=True
+                    )}
+            )
+
+            if st.form_submit_button(label='Apply All'):
+                for index, row in edited_df.iterrows():
+                    st.session_state.df.loc[index, "country"] = row["country"]
+                st.success("Changes have been applied successfully!")
+                st.session_state.show_updated_df = True
+
+    if st.session_state.categories_issues.empty:
+        st.success("No issues found Your data is clean.")
+        st.session_state.show_updated_df = False  # Do not show updated DataFrame if there are no issues
 
     # Show updated DataFrame outside the form
     if st.session_state.show_updated_df:
         st.success("Your changes have been applied. Here is the updated data:")
         st.write(st.session_state.df)
-        st.info("Please check if you still have issues. If not, proceed to the next step.")
 
-with tabs[2]:
-    st.header("Step 3: Clean Your Data (Dates)")
-    st.write("Click the button below to check for issues with dates in your data.")
 
-    st.button("Check dates", on_click=on_check_dates)
-
+# Define the fragment for date check
+@st.fragment
+def check_dates_fragment():
     if not st.session_state.dates_issues.empty:
         suggested_fixes = st.session_state.dates_issues[st.session_state.dates_issues['suggestion'] != '']
         manual_fixes = st.session_state.dates_issues[st.session_state.dates_issues['suggestion'] == '']
@@ -307,7 +382,10 @@ with tabs[2]:
             if st.button("Ignore All Rows", key = "date_ignore"):
                 update_ignore_df(rows_with_issues)
                 update_df(st.session_state.df[~st.session_state.df.index.isin(issue_rows)])
+                st.write("These are the rows that were ignored:")
                 st.write(st.session_state.ignore_df)
+                st.write("This is the updated dataset you are working on:")
+                st.write(st.session_state.df)
 
             st.markdown("### Option 2: Replace All Problematic By Hand")
             with st.form(key='edit_form_dates'):
@@ -335,13 +413,9 @@ with tabs[2]:
     if st.session_state.show_updated_df:
         st.success("Manual changes have been applied. You can proceed to the next step. Here is the updated data:")
         st.write(st.session_state.df)
-
-with tabs[3]:
-    st.header("Step 4: Clean Your Countries")
-    st.write("Click the button below to check for issues with country names in your data.")
-
-    st.button("Check countries", on_click=on_check_countries)
-
+# Define the fragment for country check
+@st.fragment
+def check_countries_fragment():
     if not st.session_state.countries_issues.empty:
         suggested_fixes = st.session_state.countries_issues[st.session_state.countries_issues['suggestion'] != '']
         manual_fixes = st.session_state.countries_issues[st.session_state.countries_issues['suggestion'] == '']
@@ -360,7 +434,10 @@ with tabs[3]:
             if st.button("Ignore All Rows", key = "country_ignore"):
                 update_ignore_df(rows_with_issues)
                 update_df(st.session_state.df[~st.session_state.df.index.isin(issue_rows)])
+                st.write("These are the rows that were ignored:")
                 st.write(st.session_state.ignore_df)
+                st.write("This is the updated dataset you are working on:")
+                st.write(st.session_state.df)
 
             st.markdown("### Option 2: Replace All Problematic By Hand")
             with st.form(key='edit_form_country'):
@@ -388,3 +465,47 @@ with tabs[3]:
     if st.session_state.show_updated_df:
         st.success("Manual changes have been applied. You can proceed to the next step. Here is the updated data:")
         st.write(st.session_state.df)
+
+# Tab for checking null values 
+with tabs[1]:
+    st.header("Step 1: Null values")
+    st.write("Click the button below to check for unallowed null values in your data.")
+    
+    # Check categories button
+    check_button = st.button("Check null values")
+
+    if check_button:
+        check_null_values_fragment()
+
+# Tab for category check
+with tabs[2]:
+    st.header("Step 3: Clean Your Data (Categories)")
+    st.write("Click the button below to check for issues with device categories in your data.")
+    
+    # Check categories button
+    check_button = st.button("Check categories")
+
+    if check_button:
+        check_categories_fragment()
+        
+# Tab for date check
+with tabs[3]:
+    st.header("Step 4: Clean Your Data (Dates)")
+    st.write("Click the button below to check for issues with dates in your data.")
+
+    # Check dates button
+    check_dates_button = st.button("Check dates", on_click=on_check_dates)
+
+    if check_dates_button:
+        check_dates_fragment()
+
+# Tab for country check
+with tabs[4]:
+    st.header("Step 5: Clean Your Countries")
+    st.write("Click the button below to check for issues with country names in your data.")
+
+    # Check countries button
+    check_countries_button = st.button("Check countries", on_click=on_check_countries)
+
+    if check_countries_button:
+        check_countries_fragment()

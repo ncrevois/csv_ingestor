@@ -2,7 +2,6 @@ import pandas as pd
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderUnavailable
 import time
-import pycountry
 
 def files_concat(uploaded_files): 
     dfs = []
