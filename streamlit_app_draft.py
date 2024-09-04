@@ -36,12 +36,24 @@ if 'countries_issues' not in st.session_state:
     st.session_state.countries_issues = pd.DataFrame()
 if 'ignore_df' not in st.session_state:
     st.session_state.ignore_df = pd.DataFrame()
+if 'null_issues' not in st.session_state:
+    st.session_state.null_issues = pd.DataFrame()
+if 'categories_issues' not in st.session_state:
+    st.session_state.categories_issues = pd.DataFrame()
+if 'dates_issues' not in st.session_state:
+    st.session_state.dates_issues = pd.DataFrame()
+if 'countries_issues' not in st.session_state:
+    st.session_state.countries_issues = pd.DataFrame()
 
 def reset_state():
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.session_state.df = None
     st.session_state.missing_columns_flag = False
+    st.session_state.null_issues = pd.DataFrame()
+    st.session_state.categories_issues = pd.DataFrame()
+    st.session_state.dates_issues = pd.DataFrame()
+    st.session_state.countries_issues = pd.DataFrame()
     st.session_state.categories_issues = pd.DataFrame()
     st.session_state.selected_replacements = {}
     st.session_state.category_checked = False
@@ -98,7 +110,7 @@ if st.button("Start/Restart"):
         st.error("Please upload one or more files.")
 
 # Create tabs
-tabs = st.tabs(["Step 1: Map Your Columns",  "Step 2: Null Values", "Step 3: Clean Your Categories", "Step 4: Clean Your Dates", "Step 5:Clean Your Countries"])
+tabs = st.tabs(["Step 1: Map Your Columns", "Step 2: Check all problems", "Step 3: Null Values", "Step 4: Clean Your Categories", "Step 5: Clean Your Dates", "Step 6:Clean Your Countries"])
 
 with tabs[0]:
     st.header("Step 1: Map Your Columns")
@@ -203,13 +215,66 @@ with tabs[0]:
             st.write(st.session_state.df)
 
 
+@st.fragment
+def check_all_errors_fragment():
+    st.header("Step 1: Check All Problems")
+    st.write("This step will check for all types of issues in your dataset.")
+
+    # Check for null values
+    null_issues = st.session_state.df[st.session_state.df[required_columns].isnull().any(axis=1)]
+
+    # Check for category problems
+    st.session_state.df, categories_issues, valid_device_categories = category_check(st.session_state.df)
+    problematic_categories = categories_issues['deviceCategory'].unique()
+
+    # Check for date problems
+    st.session_state.df, dates_issues = date_check(st.session_state.df)
+
+    # Check for country problems
+    st.session_state.df, countries_issues = countries_check(st.session_state.df)
+
+    # Display summary of issues
+    st.subheader("Summary of Issues:")
+
+    if not null_issues.empty:
+        st.error(f"⚠️ Null Values: {len(null_issues)} rows have missing values in mandatory columns.")
+    
+    if not categories_issues.empty:
+        st.error(f"⚠️ Category Issues: {len(problematic_categories)} problematic categories found.")
+    
+    if not dates_issues.empty:
+        st.error(f"⚠️ Date Issues: {len(dates_issues)} date-related issues found.")
+    
+    if not countries_issues.empty:
+        st.error(f"⚠️ Country Issues: {len(countries_issues)} country-related issues found.")
+
+    if null_issues.empty and categories_issues.empty and dates_issues.empty and countries_issues.empty:
+        st.success("✅ No issues found in your dataset. Great job!")
+    else:
+        st.warning("Please proceed to the following tabs to address these issues individually.")
+
+    # Option to display detailed issues
+    if st.checkbox("Show detailed issues"):
+        if not null_issues.empty:
+            st.subheader("Null Value Issues")
+            st.write(null_issues)
+        
+        if not categories_issues.empty:
+            st.subheader("Category Issues")
+            st.write(categories_issues)
+        
+        if not dates_issues.empty:
+            st.subheader("Date Issues")
+            st.write(dates_issues)
+        
+        if not countries_issues.empty:
+            st.subheader("Country Issues")
+            st.write(countries_issues)
 
 
 # Define the fragment for null values in mandatory columns
 @st.fragment
-def check_null_values_fragment():
-
-    null_issues = st.session_state.df[st.session_state.df[required_columns].isnull().any(axis=1)]
+def check_null_values_fragment(null_issues):
     
     if not null_issues.empty:
         st.error("There are rows with missing values in mandatory columns.")
@@ -459,8 +524,11 @@ def check_countries_fragment():
         st.success("Manual changes have been applied. You can proceed to the next step. Here is the updated data:")
         st.write(st.session_state.df)
 
-# Tab for checking null values 
 with tabs[1]:
+    check_all_errors_fragment()
+
+# Tab for checking null values 
+with tabs[2]:
     st.header("Step 1: Null values")
     st.write("Click the button below to check for unallowed null values in your data.")
     
@@ -471,7 +539,7 @@ with tabs[1]:
         check_null_values_fragment()
 
 # Tab for category check
-with tabs[2]:
+with tabs[3]:
     st.header("Step 3: Clean Your Data (Categories)")
     st.write("Click the button below to check for issues with device categories in your data.")
     
@@ -482,7 +550,7 @@ with tabs[2]:
         check_categories_fragment()
         
 # Tab for date check
-with tabs[3]:
+with tabs[4]:
     st.header("Step 4: Clean Your Data (Dates)")
     st.write("Click the button below to check for issues with dates in your data.")
 
@@ -493,7 +561,7 @@ with tabs[3]:
         check_dates_fragment()
 
 # Tab for country check
-with tabs[4]:
+with tabs[5]:
     st.header("Step 5: Clean Your Countries")
     st.write("Click the button below to check for issues with country names in your data.")
 
