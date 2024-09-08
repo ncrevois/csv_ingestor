@@ -140,7 +140,7 @@ def category_check(df):
                 "row": index,
                 "column": col,
                 "value": value,
-                "error": f"The column {col} shouldn't be empty.",
+                "error": f"The column {col} shouldn't be empty",
                 "suggestion": ""
             })
 
@@ -149,7 +149,7 @@ def category_check(df):
                     "row": index,
                     "column": col,
                     "value": value,
-                    "error": f"The column {col} should contain a string.",
+                    "error": f"The column {col} should contain a string",
                     "suggestion": ""
                 })
 
@@ -160,7 +160,7 @@ def category_check(df):
                     "row": index,
                     "column": col,
                     "value": value,
-                    "error": "Invalid device category",
+                    "error": "deviceCategory not in the list of allowed device categories",
                     "suggestion": ""
                 })
 
@@ -172,50 +172,176 @@ def category_check(df):
 def country_check(df):
     issues = []  # List to store issue rows
     col = "country"
-    if col in df.columns:
-        for index, value in df[col].items():
-            if pd.isna(value):
-                issues.append({
-                                "row": index,
-                                "column": col, 
-                                "value": value,
-                                "error": f"The column {col} should not be empty",
-                                "suggestion": ""
-                            })
-                issues_df = pd.DataFrame(issues, columns=["row", "column", "value", "error", "suggestion"])
-                return issues_df
+    for index, value in df[col].items():
+        if pd.isna(value):
+            issues.append({
+                            "row": index,
+                            "column": col, 
+                            "value": value,
+                            "error": f"The column {col} shouldn't be empty",
+                            "suggestion": ""
+                        })
 
-            if not isinstance(value, str):
+        elif not isinstance(value, str):
+            issues.append({
+                            "row": index,
+                            "column": col, 
+                            "value": value,
+                            "error": f"The column {col} should contain a string",
+                            "suggestion": ""
+                        })
+        else: 
+            if value == "" or value.lower() == "unknown" : 
                 issues.append({
-                                "row": index,
-                                "column": col, 
-                                "value": value,
-                                "error": f"The column {col} should contain a string",
-                                "suggestion": ""
-                            })
-                issues_df = pd.DataFrame(issues, columns=["row", "column", "value", "error", "suggestion"])
-                return issues_df
-                            
-            country = pycountry.countries.get(alpha_2=value)  #check if country is in the right format
-            if not country: 
-                try:
-                    country = pycountry.countries.search_fuzzy(value)[0]     #try and find the alpha 2 value for the country 
-                    issues.append({
-                                "row": index,
-                                "column": col, 
-                                "value": value,
-                                "error": f"The column {col} not in Alpha 2 format",
-                                "suggestion": country
-                            })
-                except (LookupError, IndexError):
-                    issues.append({
-                                "row": index,
-                                "column": col, 
-                                "value": value,
-                                "error": f"The column {col} not in Alpha 2 format",
-                                "suggestion": ""
-                            })
+                            "row": index,
+                            "column": col, 
+                            "value": value,
+                            "error": f"The column {col} shouldn't be empty",
+                            "suggestion": ""
+                        })                       
+            else: 
+                country = pycountry.countries.get(alpha_2=value)  #check if country is in the right format
+                if not country: 
+                    try:
+                        country = pycountry.countries.search_fuzzy(value)[0]     #try and find the alpha 2 value for the country 
+                        issues.append({
+                                    "row": index,
+                                    "column": col, 
+                                    "value": value,
+                                    "error": f"The column {col} not in Alpha 2 format",
+                                    "suggestion": country
+                                })
+                    except (LookupError, IndexError):
+                        issues.append({
+                                    "row": index,
+                                    "column": col, 
+                                    "value": value,
+                                    "error": f"The column {col} not in Alpha 2 format",
+                                    "suggestion": ""
+                                })
 
     issues_df = pd.DataFrame(issues, columns=["row", "column", "value", "error", "suggestion"])
     return issues_df
+
+
+
+def serial_number_check(df):
+    issues = []
+    col = "deviceSerialnumber"
+    serial_number_counts = df[col].value_counts()
+    duplicates = serial_number_counts[serial_number_counts > 1].index
+    
+    # Check for NaN values and log issues
+    for index, value in df[col].items():
+        if pd.isna(value):
+            issues.append({
+                "row": index,
+                "column": col,
+                "value": value,
+                "error": f"The column {col} shouldn't be empty",
+                "suggestion": ""
+            })
+        elif not isinstance(value, str): 
+            issues.append({
+                "row": index,
+                "column": col,
+                "value": value,
+                "error": f"The column {col} should contain a string",
+                "suggestion": ""
+            }) 
+        else:
+            if value == "" or value.lower() == "unknown": 
+                issues.append({
+                    "row": index,
+                    "column": col,
+                    "value": value,
+                    "error": f"The column {col} shouldn't be empty",
+                    "suggestion": ""
+                })                
+            elif value in duplicates:
+                issues.append({
+                    "row": index,
+                    "column": col,
+                    "value": value,
+                    "error": f"{col} used multiple times (should be unique)",
+                    "suggestion": ""
+                })
+    
+    # Create a DataFrame from the issues list
+    issues_df = pd.DataFrame(issues, columns=["row", "column", "value", "error", "suggestion"])
+    
+    return issues_df
+
+def manufacturer_check(df):
+    issues = []
+    col = "deviceManufacturer"
+    for index, value in df[col].items():
+        if pd.isna(value): 
+            issues.append({
+                "row": index,
+                "column": col,
+                "value": value,
+                "error": f"The column {col} shouldn't be empty",
+                "suggestion": ""
+            })
+
+        elif not isinstance(value, str): 
+                issues.append({
+                    "row": index,
+                    "column": col,
+                    "value": value,
+                    "error": f"The column {col} should contain a string",
+                    "suggestion": ""
+                })
+
+        else: 
+            if value == "" or value.lower() == "unknown": 
+                issues.append({
+                "row": index,
+                "column": col,
+                "value": value,
+                "error": f"The column {col} shouldn't be empty",
+                "suggestion": ""
+            })
+
+    # Create a DataFrame from the issues list
+    issues_df = pd.DataFrame(issues, columns=["row", "column", "value", "error", "suggestion"])
+    return issues_df
+
+def model_check(df):
+    issues = []
+    col = "deviceModel"
+    for index, value in df[col].items():
+        if pd.isna(value): 
+            issues.append({
+                "row": index,
+                "column": col,
+                "value": value,
+                "error": f"The column {col} shouldn't be empty",
+                "suggestion": ""
+            })
+
+        elif not isinstance(value, str): 
+                issues.append({
+                    "row": index,
+                    "column": col,
+                    "value": value,
+                    "error": f"The column {col} should contain a string",
+                    "suggestion": ""
+                })
+
+        else: 
+            if value == "" or value.lower() == "unknown": 
+                issues.append({
+                "row": index,
+                "column": col,
+                "value": value,
+                "error": f"The column {col} shouldn't be empty",
+                "suggestion": ""
+            })
+
+    # Create a DataFrame from the issues list
+    issues_df = pd.DataFrame(issues, columns=["row", "column", "value", "error", "suggestion"])
+    return issues_df
+
 

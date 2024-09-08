@@ -3,6 +3,7 @@ import pandas as pd
 from functions import *  # Ensure this contains the apply_mapping function
 from collections import Counter
 import plotly.express as px
+import seaborn as sns
 
 
 # Set the page config
@@ -190,8 +191,8 @@ if not st.session_state.df.empty:
     with tabs[1]:
         st.markdown("<h2>Step 2: Data Quality Report</h1>", unsafe_allow_html=True)
         # Redefining checks
-        checks = ["date", "category", "country"]
-
+        checks = ["date", "category", "country", "serial_number", "manufacturer", "model"]
+        st.session_state.issues_df_final = pd.DataFrame()
         for check in checks:
             func = globals()[f"{check}_check"]
             issues_df = func(st.session_state.df)
@@ -200,14 +201,16 @@ if not st.session_state.df.empty:
         st.session_state.issues_without_suggestions = st.session_state.issues_df_final[st.session_state.issues_df_final['suggestion'] == '']
 
         # Calculate global statistics
-        total_rows = len(st.session_state.df)
-        rows_with_issues_no_suggestion = len(st.session_state.issues_df_final['row'].unique())
-        rows_automatically_corrected = total_rows - rows_with_issues_no_suggestion
-        percentage_with_issues = (rows_with_issues_no_suggestion / total_rows) * 100
-        percentage_automatically_corrected = (rows_automatically_corrected / total_rows) * 100
+        ##[uncomment these lines for showing suggestions] cells, before correction 
+        ##cells_with_issues = len(st.session_state.issues_df_final['row'])
+        ##cells_with_issues_no_suggestion = len(st.session_state.issues_without_suggestions) 
+        ##cells_automatically_corrected = cells_with_issues - cells_with_issues_no_suggestion
+        ##percentage_cells_automatically_corrected = (cells_automatically_corrected / cells_with_issues) * 100
 
-        # Automatically corrected 
-        st.markdown("")
+        #rows, after correction 
+        total_rows = len(st.session_state.df)
+        rows_with_issues = len(st.session_state.issues_without_suggestions['row'].unique())
+        percentage_rows_with_issues = (rows_with_issues / total_rows) * 100
 
         # Group by error type for detailed view
         error_summary = st.session_state.issues_without_suggestions.groupby('error').size().reset_index(name='count')
@@ -216,38 +219,44 @@ if not st.session_state.df.empty:
         # Global statistics
         st.markdown("<h3 style='color: #d7ffcd;'>Global Overview</h3>", unsafe_allow_html=True)
         
-        # Automatically corrected 
-        if rows_automatically_corrected != 0: 
-            st.markdown(f"We were able to automatically correct {rows_automatically_corrected:,} of your problematic rows ({percentage_automatically_corrected:.2f}%).")
-            st.markdown(f"The metrics below show the number of rows with problems that we couldn't automatically correct.")
+        ##[uncomment these lines for showing suggestions] if we ever want to show suggestions 
+        ##st.markdown(f"We detected {cells_with_issues:,} cells with errors in your data. {percentage_cells_automatically_corrected:.2f}% of them can be automatically corrected.")
+        ##st.markdown("After correction, this is the amount of rows that still have an error in your dataset:")
 
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total Rows", f"{total_rows:,}")
+            st.metric("Total Rows in your dataset", f"{total_rows:,}")
         with col2:
-            st.metric("Rows with Issues", f"{rows_with_issues_no_suggestion:,}")
+            st.metric("Rows with Issues", f"{rows_with_issues:,}")
         with col3:
-            st.metric("Percentage with Issues", f"{percentage_with_issues:.2f}%")
+            st.metric("Percentage of Rows with Issues", f"{percentage_rows_with_issues:.0f}%")
 
         st.divider()
 
         # Detailed error breakdown
         st.markdown("<h3 style='color: #d7ffcd;'>Detailed Error View</h3>", unsafe_allow_html=True)
+        custom_colors1 = sns.color_palette("crest", n_colors=10).as_hex()
+        custom_colors2 = sns.color_palette("cubehelix", n_colors = 10).as_hex()
 
         # Error by type chart
-        fig = px.pie(error_summary, values='count', names='error', title='Distribution of Error Types')
+        fig = px.pie(error_by_column, values='count', names='column', title='Distribution of Errors by Column', color_discrete_sequence=custom_colors1)
         st.plotly_chart(fig)
 
         # Errors by column and type
-        fig = px.bar(error_by_column, x='column', y='count', color='error', title='Error Distribution by Column and Type')
+        fig = px.bar(error_by_column, x='column', y='count', color='error', title='Error Distribution by Column and Type', labels={'count': 'Number of Errors'}, color_discrete_sequence=custom_colors2)
         st.plotly_chart(fig)
 
-        # Filter issues where 'suggestion' is an empty string
-        issues_without_suggestions = st.session_state.issues_df_final[st.session_state.issues_df_final['suggestion'] == '']
+        # Filter options
+        all_error_types = st.session_state.issues_df_final['error'].unique()
+        selected_errors = st.multiselect("Select error types to filter", options=all_error_types, default=all_error_types)
+
+        # Filter issues based on selected error types
+        filtered_issues = st.session_state.issues_df_final[st.session_state.issues_df_final['error'].isin(selected_errors)]
+        filtered_issues_without_suggestions = filtered_issues[filtered_issues['suggestion'] == '']
 
         # Group the issues by 'row' and create the columns based on the new logic
         issue_details = (
-            issues_without_suggestions.groupby('row').agg(
+            filtered_issues_without_suggestions.groupby('row').agg(
                 issue_detail=('error', lambda x: ', '.join(x)),  # Concatenate error strings
                 number_of_errors=('error', 'count'),  # Count number of errors
                 column_with_problems=('column', lambda x: list(x))  # List of problematic columns
@@ -256,8 +265,8 @@ if not st.session_state.df.empty:
 
         st.divider()
 
-        # Select only rows in st.session_state.df where index is in 'row' of issues_df_final
-        df_with_issues = st.session_state.df.loc[st.session_state.df.index.isin(issues_without_suggestions['row'])].copy()
+        # Select only rows in st.session_state.df where index is in 'row' of filtered_issues
+        df_with_issues = st.session_state.df.loc[st.session_state.df.index.isin(filtered_issues_without_suggestions['row'])].copy()
 
         # Merge issue details back to df_with_issues
         df_with_issues = df_with_issues.merge(issue_details, left_index=True, right_index=True, how='left')
@@ -266,7 +275,6 @@ if not st.session_state.df.empty:
         st.subheader("Rows with Errors (Original Data + Error Details)")
         st.write("Showing only rows with issues:")
         st.dataframe(df_with_issues)
-
 
         # Download button for issues DataFrame
         csv = df_with_issues.to_csv(index=False)
