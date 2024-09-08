@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from io import StringIO
 from functions import *  # Ensure this contains the apply_mapping function
 from collections import Counter
 
@@ -12,6 +11,14 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+valid_device_categories = [
+    "LAPTOP", "DESKTOP", "NOTEBOOK", "SMARTPHONE", "MONITOR",
+    "TABLET", "PRINTER", "SERVER", "SWITCH", "ROUTER",
+    "VIRTUAL_MACHINE", "FIREWALL", "WIFI_ACCESS_POINT",
+    "LOAD_BALANCER", "GENERATOR", "UNINTERRUPTED_POWER_SUPPLY",
+    "REFRIGERATION_UNIT", "AIR_CONDITIONING_CABINET", "OTHER"
+]
 
 # Initialize session state variables
 if 'df' not in st.session_state:
@@ -38,8 +45,6 @@ if 'ignore_df' not in st.session_state:
     st.session_state.ignore_df = pd.DataFrame()
 
 def reset_state():
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
     st.session_state.df = None
     st.session_state.missing_columns_flag = False
     st.session_state.categories_issues = pd.DataFrame()
@@ -96,6 +101,7 @@ if st.button("Start/Restart"):
         st.write(f"You are working on cleaning the data from these files: {[file.name for file in uploaded_files]}")
     else: 
         st.error("Please upload one or more files.")
+
 
 # Create tabs
 tabs = st.tabs(["Step 1: Map Your Columns",  "Step 2: Null Values", "Step 3: Clean Your Categories", "Step 4: Clean Your Dates", "Step 5:Clean Your Countries"])

@@ -2,7 +2,7 @@
 
 [theme]
 base="dark"
-primaryColor="#FF4B4B"  # Accent color for interactive elements
+primaryColor="#d7ffcd"  # Accent color for interactive elements
 backgroundColor="#333333"  # Main background color
 secondaryBackgroundColor="#444444"  # Sidebar or secondary background color
 textColor="#FFFFFF"  # Text color to ensure readability on a dark background

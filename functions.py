@@ -1,7 +1,6 @@
 import pandas as pd 
 from geopy.geocoders import Nominatim
-from geopy.exc import GeocoderTimedOut, GeocoderUnavailable
-import time
+import pycountry
 
 def files_concat(uploaded_files): 
     dfs = []
@@ -36,126 +35,187 @@ valid_device_categories = [
     "REFRIGERATION_UNIT", "AIR_CONDITIONING_CABINET", "OTHER"
 ]
 
+
 def date_check(df):
     # Define columns to check
     date_columns = ["deviceEntryDate", "devicePurchaseDate", "deviceRetirementDate"]
-    
     issues = []  # List to store issue rows
 
     for col in date_columns:
         if col in df.columns:
             for index, value in df[col].items():
-                try:
-                    # Try to parse with the expected format
-                    pd.to_datetime(value, format='%Y-%m-%d')
-                except ValueError:
-                    try:
-                        # Attempt to parse with a flexible format
-                        parsed_date = pd.to_datetime(value, errors='coerce')
-                        if pd.notna(parsed_date):  # Check if parsing was successful
-                            formatted_date = parsed_date.strftime('%Y-%m-%d')
-                            issues.append({
-                                "row": index,
-                                "column": col, 
-                                "value": value,
-                                "error": "Invalid date format",
-                                "suggestion": formatted_date
-                            })
-                        else:
-                            issues.append({
-                                "row": index,
-                                "column": col, 
-                                "value": value,
-                                "error": "Invalid date format",
-                                "suggestion": ""
-                            })
-                    except Exception as e:
+                if col == "deviceEntryDate":
+                    if pd.isna(value):
                         issues.append({
                             "row": index,
                             "column": col, 
                             "value": value,
-                            "error": str(e),
+                            "error": f"The column {col} shouldn't be empty",
                             "suggestion": ""
                         })
-
+                    else:
+                        # Perform date checks
+                        try:
+                            pd.to_datetime(value, format='%Y-%m-%d', errors='raise')
+                        except ValueError:
+                            try:
+                                # Attempt to parse with a flexible format
+                                parsed_date = pd.to_datetime(value, errors='coerce')
+                                if pd.notna(parsed_date):  # Check if parsing was successful
+                                    formatted_date = parsed_date.strftime('%Y-%m-%d')
+                                    # Update the DataFrame with the corrected date
+                                    df.at[index, col] = formatted_date
+                                    issues.append({
+                                        "row": index,
+                                        "column": col,
+                                        "value": value,
+                                        "error": f"The column {col} has an invalid date format",
+                                        "suggestion": formatted_date
+                                    })
+                                else:
+                                    issues.append({
+                                        "row": index,
+                                        "column": col, 
+                                        "value": value,
+                                        "error": f"The column {col} has an invalid date format",
+                                        "suggestion": ""
+                                    })
+                            except Exception as e:
+                                issues.append({
+                                    "row": index,
+                                    "column": col, 
+                                    "value": value,
+                                    "error": str(e),
+                                    "suggestion": ""
+                                })
+                else:
+                    if pd.notna(value):  # Only perform checks if the value is not NaN
+                        try:
+                            pd.to_datetime(value, format='%Y-%m-%d', errors='raise')
+                        except ValueError:
+                            try:
+                                # Attempt to parse with a flexible format
+                                parsed_date = pd.to_datetime(value, errors='coerce')
+                                if pd.notna(parsed_date):  # Check if parsing was successful
+                                    formatted_date = parsed_date.strftime('%Y-%m-%d')
+                                    # Update the DataFrame with the corrected date
+                                    df.at[index, col] = formatted_date
+                                    issues.append({
+                                        "row": index,
+                                        "column": col,
+                                        "value": value,
+                                        "error": f"The column {col} has an invalid date format",
+                                        "suggestion": formatted_date
+                                    })
+                                else:
+                                    issues.append({
+                                        "row": index,
+                                        "column": col, 
+                                        "value": value,
+                                        "error": f"The column {col} has an invalid date format",
+                                        "suggestion": ""
+                                    })
+                            except Exception as e:
+                                issues.append({
+                                    "row": index,
+                                    "column": col, 
+                                    "value": value,
+                                    "error": str(e),
+                                    "suggestion": ""
+                                })
+    
     # Create a DataFrame from the issues list
     issues_df = pd.DataFrame(issues, columns=["row", "column", "value", "error", "suggestion"])
     
-    return df, issues_df
+    return issues_df
+
 
 
 def category_check(df):
     issues = []
-
-    # Ensure all device categories are in upper case
-    df["deviceCategory"] = df["deviceCategory"].str.upper()
-
-    for index, value in df["deviceCategory"].items():
-        if value not in valid_device_categories:
+    col = "deviceCategory"
+    for index, value in df[col].items():
+        if pd.isna(value): 
             issues.append({
                 "row": index,
-                "column": "deviceCategory",
-                "deviceCategory": value,
-                "error": "Invalid device category",
-                "suggestion": "Check category format"
+                "column": col,
+                "value": value,
+                "error": f"The column {col} shouldn't be empty.",
+                "suggestion": ""
             })
 
-    # Create a DataFrame from the issues list
-    issues_df = pd.DataFrame(issues, columns=["row", "column", "deviceCategory", "error", "suggestion"])
-    
-    return df, issues_df, valid_device_categories
+        elif not isinstance(value, str): 
+                issues.append({
+                    "row": index,
+                    "column": col,
+                    "value": value,
+                    "error": f"The column {col} should contain a string.",
+                    "suggestion": ""
+                })
 
-#Get a country in the right format 
-def get_country_code(location_string):
-    geolocator = Nominatim(user_agent="my_agent")
-    max_retries = 3
-    retry_delay = 1
-
-    for attempt in range(max_retries):
-        try:
-            location = geolocator.geocode(location_string, addressdetails=True)
-            if location:
-                address = location.raw.get('address', {})
-                country_code = address.get('country_code', '').upper()
-                if country_code:
-                    return country_code
-                else:
-                    return ""
-            else:
-                return ""
-        except (GeocoderTimedOut, GeocoderUnavailable):
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay)
-            else:
-                return ""
-        except Exception as e:
-            return ""
-
-def countries_check(df):
-    issues = []  # List to store issue rows
-    if "country" in df.columns:
-        for index, value in df["country"].items():
-            formatted_country = get_country_code(value)
-            if value != formatted_country: #value wasn't already in the right format 
-                if formatted_country == "": #value can't be formatted 
-                    issues.append({
-                                "row": index,
-                                "column": "country", 
-                                "value": value,
-                                "error": "Invalid country format",
-                                "suggestion": ""
-                            })
-                else: #value can be formatted automatically 
-                    issues.append({
-                                "row": index,
-                                "column": 'country', 
-                                "value": value,
-                                "error": "Invalid country format",
-                                "suggestion": formatted_country
-                            })
+        else: 
+            value = value.upper()
+            if value not in valid_device_categories:
+                issues.append({
+                    "row": index,
+                    "column": col,
+                    "value": value,
+                    "error": "Invalid device category",
+                    "suggestion": ""
+                })
 
     # Create a DataFrame from the issues list
     issues_df = pd.DataFrame(issues, columns=["row", "column", "value", "error", "suggestion"])
-    
-    return df, issues_df
+    return issues_df
+
+
+def country_check(df):
+    issues = []  # List to store issue rows
+    col = "country"
+    if col in df.columns:
+        for index, value in df[col].items():
+            if pd.isna(value):
+                issues.append({
+                                "row": index,
+                                "column": col, 
+                                "value": value,
+                                "error": f"The column {col} should not be empty",
+                                "suggestion": ""
+                            })
+                issues_df = pd.DataFrame(issues, columns=["row", "column", "value", "error", "suggestion"])
+                return issues_df
+
+            if not isinstance(value, str):
+                issues.append({
+                                "row": index,
+                                "column": col, 
+                                "value": value,
+                                "error": f"The column {col} should contain a string",
+                                "suggestion": ""
+                            })
+                issues_df = pd.DataFrame(issues, columns=["row", "column", "value", "error", "suggestion"])
+                return issues_df
+                            
+            country = pycountry.countries.get(alpha_2=value)  #check if country is in the right format
+            if not country: 
+                try:
+                    country = pycountry.countries.search_fuzzy(value)[0]     #try and find the alpha 2 value for the country 
+                    issues.append({
+                                "row": index,
+                                "column": col, 
+                                "value": value,
+                                "error": f"The column {col} not in Alpha 2 format",
+                                "suggestion": country
+                            })
+                except (LookupError, IndexError):
+                    issues.append({
+                                "row": index,
+                                "column": col, 
+                                "value": value,
+                                "error": f"The column {col} not in Alpha 2 format",
+                                "suggestion": ""
+                            })
+
+    issues_df = pd.DataFrame(issues, columns=["row", "column", "value", "error", "suggestion"])
+    return issues_df
 
