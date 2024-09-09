@@ -4,6 +4,8 @@ from functions import *  # Ensure this contains the apply_mapping function
 from collections import Counter
 import plotly.express as px
 import seaborn as sns
+from typing import Literal
+from datetime import datetime, date
 
 
 # Set the page config
@@ -68,6 +70,93 @@ st.markdown("""
 This tool will help you upload your data and make the needed fix for it to be accepted into the database.
             It will also allow you to generate a report with all the issues found in your data. 
 """)
+
+# Helper functions
+def update_df(new_df):
+    st.session_state.df = new_df
+
+def update_ignore_df(new_ignore_df):
+    st.session_state.ignore_df = pd.concat([st.session_state.ignore_df, new_ignore_df], ignore_index=True)
+
+
+def ignore_rows_form(rows_with_issues): 
+    st.write("Those rows will be added to an 'ignored_rows' file that you can download at the end.")
+    with st.form(key='ignore_all'):
+        # Button to process ignoring rows
+        ignore_button = st.form_submit_button("Ignore All Rows")
+        if ignore_button:
+            # Remove the ignored rows from the original DataFrame
+            st.session_state.ignore_df = update_ignore_df(rows_with_issues)
+            st.session_state.df = update_df(st.session_state.df[~st.session_state.df.index.isin(rows_with_issues.index)])
+            st.write("The following rows were added to an ignored dataset and deleted from the working dataset:")
+            st.write(st.session_state.ignore_df)
+            st.session_state.show_updated_df = True
+
+def replace_all_form(rows_with_issues, column, type: Literal["options", "date", "freeform"], extra_data = None): 
+    with st.form(key=f'replace_all_form_{column}'):
+        if type == "freeform":
+            replace_all_by = st.text_input(
+                    "Replace all problematic values by:",
+                    key=f"replace_all_by_input_{column}"
+                )
+
+        if type == "options": 
+            replace_all_by = st.selectbox(
+                "Replace all problematic values by:",
+                options=extra_data,
+                key=f"replace_all_by_select_{column}"
+            )
+
+        if type == "date": 
+            replace_all_by = st.date_input(
+                "Replace all problematic values with this date:",
+                value=date.today(),
+                format="YYYY-MM-DD",
+                key=f"replace_all_by_{column}"
+            )
+        
+        replace_all_button = st.form_submit_button("Replace All")
+
+        if replace_all_button:
+            rows_with_issues[column] = replace_all_by
+            st.session_state.df.loc[st.session_state.df.index.isin(rows_with_issues.index), column] = rows_with_issues[column]
+            st.success(f"All problematic categories replaced with '{replace_all_by}'.")
+            st.session_state.show_updated_df = True
+
+def replace_all_by_hand(rows_with_issues, column, type: Literal["options", "date", "freeform"], extra_data = None):
+    with st.form(key='edit_form_category'):
+        if type == "options":
+            edited_df = st.data_editor(
+                        rows_with_issues,
+                        key=f"manual_editor_{column}",
+                        column_config={
+                            column: st.column_config.SelectboxColumn(
+                                label = f"{column}",
+                                help="Enter a valid value from the list.",
+                                options=extra_data,
+                                required=True
+                            )}
+                    )
+        
+        if type == "date":
+            edited_df = st.data_editor(
+                            rows_with_issues,
+                            key=f"manual_editor_{column}", 
+                            column_config={column: st.column_config.DateColumn(label=f"{column}", format="YYYY-MM-DD", required=True)}
+                        )
+        
+        if type == "freeform":
+            edited_df = st.data_editor(
+                            rows_with_issues,
+                            key=f"manual_editor_{column}"
+                        )
+
+        if st.form_submit_button(label='Apply All'):
+            for index, row in edited_df.iterrows():
+                st.session_state.df.loc[index, "deviceCategory"] = row["deviceCategory"]
+            st.success("Changes have been applied successfully!")
+            st.session_state.show_updated_df = True
+
 
 # File uploader
 uploaded_files = st.file_uploader("Choose CSV files", accept_multiple_files=True)
@@ -284,3 +373,93 @@ if not st.session_state.df.empty:
             file_name="problematic_rows.csv",
             mime="text/csv",
         )
+
+    with tabs[2]: 
+        columns_to_fix = st.session_state.issues_without_suggestions['column'].unique()
+        st.markdown("<h2>Step 3: Clean your Data</h1>", unsafe_allow_html=True)
+        column_to_fix =  st.selectbox("Which column would you want to clean?", options = columns_to_fix)
+        
+
+        if column_to_fix == "deviceCategory": 
+            st.session_state.categories_issues = st.session_state.issues_df_final[st.session_state.issues_df_final["column"] == column_to_fix]
+            st.session_state.show_updated_df = False
+            rows_with_issues = st.session_state.df.loc[st.session_state.categories_issues['row'].tolist()]
+            problematic_categories = st.session_state.categories_issues['value'].unique()
+
+            st.error("You have categories that are not allowed. Please replace those with allowed values.")
+
+            ### Option 1: Replace All by Form ###
+            st.markdown("### Option 1: Replace All Problematic Categories")
+            replace_all_form(rows_with_issues, column = column_to_fix , type = "options", extra_data = valid_device_categories)
+
+            ### Option 2: Ignore those rows ###
+            st.markdown("### Option 2: Ignore all Problematic Rows")
+            ignore_rows_form(rows_with_issues)
+
+            ### Option 3: Replace In Bulk Form ###
+            st.markdown("### Option 3: Replace Categories In Bulk")
+            with st.form(key='category_cleanup_form'):
+                for category in problematic_categories:
+                    count = st.session_state.categories_issues[st.session_state.categories_issues['value'] == category].shape[0]
+                    st.markdown(f"**Problematic Category:** `{category}`")
+                    st.markdown(f"**Number of Rows:** `{count}`")
+
+                    if category not in st.session_state.selected_replacements:
+                        st.session_state.selected_replacements[category] = valid_device_categories[0]  # Default to the first valid category
+
+                    st.session_state.selected_replacements[category] = st.selectbox(
+                        f"Select a valid category for '{category}':",
+                        options=valid_device_categories,
+                        key=f"select_{category}"
+                    )
+
+                apply_button = st.form_submit_button("Apply Individually")
+
+                if apply_button:
+                    for category, replacement in st.session_state.selected_replacements.items():
+                        st.session_state.df.loc[st.session_state.df['deviceCategory'] == category, 'deviceCategory'] = replacement
+                    st.success("Individual replacements applied.")
+                    st.session_state.show_updated_df = True
+            
+            ### Option 4: Replace Individually Form ###
+            st.markdown("### Option 4: Replace All Problematic Rows By Hand")
+
+            replace_all_by_hand(rows_with_issues, column = column_to_fix, type = "options", extra_data = valid_device_categories)
+
+            if st.session_state.categories_issues.empty:
+                st.success("No issues found Your data is clean.")
+                st.session_state.show_updated_df = False  # Do not show updated DataFrame if there are no issues
+
+            # Show updated DataFrame outside the form
+            if st.session_state.show_updated_df:
+                st.success("Your changes have been applied. Here is the updated data:")
+                st.write(st.session_state.df)
+
+        if column_to_fix in ["deviceEntryDate", "deviceRetirementDate", "devicePurchaseDate"]: 
+            st.session_state.dates_issues = st.session_state.issues_df_final[st.session_state.issues_df_final["column"] == column_to_fix]
+
+            suggested_fixes = st.session_state.dates_issues[st.session_state.dates_issues['suggestion'] != '']
+            manual_fixes = st.session_state.dates_issues[st.session_state.dates_issues['suggestion'] == '']
+
+            if not suggested_fixes.empty:
+                for _, row in suggested_fixes.iterrows():
+                    st.session_state.df.at[row['row'], row['column']] = row['suggestion']
+                st.success(f"Automatically fixed {len(suggested_fixes)} dates based on suggestions.")
+
+            if not manual_fixes.empty:
+                st.error("You have dates that weren't able to be parsed. Please review and correct them.")
+                rows_with_issues = st.session_state.df.loc[manual_fixes['row'].unique()].copy()
+
+                st.markdown("### Option 1: Ignore all Problematic Rows")
+                ignore_rows_form(rows_with_issues)
+
+                st.markdown("### Option 2: Replace All Problematic By Hand")
+                replace_all_by_hand(rows_with_issues, column = column_to_fix, type = "date")
+
+            if st.session_state.show_updated_df:
+                st.success("Manual changes have been applied. You can proceed to the next step. Here is the updated data:")
+                st.write(st.session_state.df)
+        
+
+            
+
