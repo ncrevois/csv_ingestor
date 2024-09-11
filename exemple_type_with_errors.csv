@@ -1,0 +1,8 @@
+deviceManufacturer,deviceModel,deviceSerialnumber,deviceCategory,deviceHostname,devicePrice,devicePurchaseDate,deviceEntryDate,deviceRetirementDate,site,country,user,operatingSystemName,operatingSystemVersion,usage,maxPower,status,tag:averageWattConsumption,tag:otherInformation
+Dell,Inspiron 15 3511,XXXXX1,LAPTOP,Inspirion-15-3511.local,549.95,2021-01-25,2021-01-27,,Lyon,FR,9b9da05dc93901a57640ab1bbf89fc59,Linux,22H2,USER,200,IN_STOCK,12,test
+Apple,m1 pro 14,XXXXX2,LAPTOP,MacBook-Pro.local,2300.00,2022-07-02,2022-09-05,,Saclay,FR,3db79dd3b999a53860b897658a3cca35,Mac OS Ventura,13.1,USER,170,OUT_OF_STOCK,0,
+Samsung,Galaxy S20 FE 5G,XXXXX3,SMARTPHONE,samsung-S20-FE-5G.local,248.58,2019-01-10,2019-01-10,2022-12-25,Londres,GB,0f8376ddd3e34f26be48414419aadf56,Android Nougat,7.2,USER,40,IN_STOCK,,otherInformation
+Dell Inc.,Inspiron 14,XXXXX4,LAPTOP,,,Nov 2023,Dec 2023,,Berlin,DE,9b9da05dc93901a57640ab1bbf89fc60,,,,,IN_STOCK,,
+Hewlett-Packard,Elite Mini 800 G9,XXXXX5,DESKTOP,,,2022,2023,,Londres,GB,9b9da05dc93901a57640ab1bbf90fc60,,,,,,,
+Apple,Apple Mac Book Pro 13,XXXXX5,34,,,2022-09-05,2022-09-25,,Lyon,France,9b9da05dc93901a57640ab1fdf90fc60,,,,,INSIDE,, 
+Apple Company,Apple Mac Book Pro 14,XXXXX6,LAP TOP,,,05 Mai 2023,12 Septembre 2023,,Lyon,Acquitaine,9b9da05dc93901a57640ab1fgr90fc60,,,,,INSIDE,, 

@@ -44,8 +44,8 @@ def date_check(df):
     for col in date_columns:
         if col in df.columns:
             for index, value in df[col].items():
-                if col == "deviceEntryDate":
-                    if pd.isna(value):
+                if pd.isna(value):
+                    if col == "deviceEntryDate": #this column is the only required one 
                         issues.append({
                             "row": index,
                             "column": col, 
@@ -53,77 +53,41 @@ def date_check(df):
                             "error": f"The column {col} shouldn't be empty",
                             "suggestion": ""
                         })
-                    else:
-                        # Perform date checks
+                    else: 
+                        pass 
+
+                else: 
+                    try:
+                        pd.to_datetime(value, format='%Y-%m-%d', errors='raise')
+                    except ValueError:
                         try:
-                            pd.to_datetime(value, format='%Y-%m-%d', errors='raise')
-                        except ValueError:
-                            try:
-                                # Attempt to parse with a flexible format
-                                parsed_date = pd.to_datetime(value, errors='coerce')
-                                if pd.notna(parsed_date):  # Check if parsing was successful
-                                    formatted_date = parsed_date.strftime('%Y-%m-%d')
-                                    # Update the DataFrame with the corrected date
-                                    df.at[index, col] = formatted_date
-                                    issues.append({
-                                        "row": index,
-                                        "column": col,
-                                        "value": value,
-                                        "error": f"The column {col} has an invalid date format",
-                                        "suggestion": formatted_date
-                                    })
-                                else:
-                                    issues.append({
-                                        "row": index,
-                                        "column": col, 
-                                        "value": value,
-                                        "error": f"The column {col} has an invalid date format",
-                                        "suggestion": ""
-                                    })
-                            except Exception as e:
+                            # Attempt to parse with a flexible format
+                            parsed_date = pd.to_datetime(value, errors='coerce')
+                            if pd.notna(parsed_date):  # Check if parsing was successful
+                                formatted_date = parsed_date.strftime('%Y-%m-%d')
+                                issues.append({
+                                    "row": index,
+                                    "column": col,
+                                    "value": value,
+                                    "error": f"The column {col} has an invalid date format",
+                                    "suggestion": formatted_date
+                                })
+                            else:
                                 issues.append({
                                     "row": index,
                                     "column": col, 
                                     "value": value,
-                                    "error": str(e),
+                                    "error": f"The column {col} has an invalid date format",
                                     "suggestion": ""
                                 })
-                else:
-                    if pd.notna(value):  # Only perform checks if the value is not NaN
-                        try:
-                            pd.to_datetime(value, format='%Y-%m-%d', errors='raise')
-                        except ValueError:
-                            try:
-                                # Attempt to parse with a flexible format
-                                parsed_date = pd.to_datetime(value, errors='coerce')
-                                if pd.notna(parsed_date):  # Check if parsing was successful
-                                    formatted_date = parsed_date.strftime('%Y-%m-%d')
-                                    # Update the DataFrame with the corrected date
-                                    df.at[index, col] = formatted_date
-                                    issues.append({
-                                        "row": index,
-                                        "column": col,
-                                        "value": value,
-                                        "error": f"The column {col} has an invalid date format",
-                                        "suggestion": formatted_date
-                                    })
-                                else:
-                                    issues.append({
-                                        "row": index,
-                                        "column": col, 
-                                        "value": value,
-                                        "error": f"The column {col} has an invalid date format",
-                                        "suggestion": ""
-                                    })
-                            except Exception as e:
-                                issues.append({
-                                    "row": index,
-                                    "column": col, 
-                                    "value": value,
-                                    "error": str(e),
-                                    "suggestion": ""
-                                })
-    
+                        except Exception as e:
+                            issues.append({
+                                "row": index,
+                                "column": col, 
+                                "value": value,
+                                "error": str(e),
+                                "suggestion": ""
+                            })
     # Create a DataFrame from the issues list
     issues_df = pd.DataFrame(issues, columns=["row", "column", "value", "error", "suggestion"])
     
@@ -144,15 +108,6 @@ def category_check(df):
                 "suggestion": ""
             })
 
-        elif not isinstance(value, str): 
-                issues.append({
-                    "row": index,
-                    "column": col,
-                    "value": value,
-                    "error": f"The column {col} should contain a string",
-                    "suggestion": ""
-                })
-
         else: 
             value = value.upper()
             if value not in valid_device_categories:
@@ -163,6 +118,16 @@ def category_check(df):
                     "error": "deviceCategory not in the list of allowed device categories",
                     "suggestion": ""
                 })
+        
+        if value != value.upper():
+            issues.append({
+                    "row": index,
+                    "column": col,
+                    "value": value,
+                    "error": "deviceCategory should be in upper case.",
+                    "suggestion": value.upper()
+                })
+
 
     # Create a DataFrame from the issues list
     issues_df = pd.DataFrame(issues, columns=["row", "column", "value", "error", "suggestion"])
@@ -181,15 +146,6 @@ def country_check(df):
                             "error": f"The column {col} shouldn't be empty",
                             "suggestion": ""
                         })
-
-        elif not isinstance(value, str):
-            issues.append({
-                            "row": index,
-                            "column": col, 
-                            "value": value,
-                            "error": f"The column {col} should contain a string",
-                            "suggestion": ""
-                        })
         else: 
             if value == "" or value.lower() == "unknown" : 
                 issues.append({
@@ -203,7 +159,7 @@ def country_check(df):
                 country = pycountry.countries.get(alpha_2=value)  #check if country is in the right format
                 if not country: 
                     try:
-                        country = pycountry.countries.search_fuzzy(value)[0]     #try and find the alpha 2 value for the country 
+                        country = pycountry.countries.search_fuzzy(value)[0].alpha_2     #try and find the alpha 2 value for the country 
                         issues.append({
                                     "row": index,
                                     "column": col, 
@@ -241,14 +197,6 @@ def serial_number_check(df):
                 "error": f"The column {col} shouldn't be empty",
                 "suggestion": ""
             })
-        elif not isinstance(value, str): 
-            issues.append({
-                "row": index,
-                "column": col,
-                "value": value,
-                "error": f"The column {col} should contain a string",
-                "suggestion": ""
-            }) 
         else:
             if value == "" or value.lower() == "unknown": 
                 issues.append({
@@ -285,15 +233,6 @@ def manufacturer_check(df):
                 "suggestion": ""
             })
 
-        elif not isinstance(value, str): 
-                issues.append({
-                    "row": index,
-                    "column": col,
-                    "value": value,
-                    "error": f"The column {col} should contain a string",
-                    "suggestion": ""
-                })
-
         else: 
             if value == "" or value.lower() == "unknown": 
                 issues.append({
@@ -320,15 +259,6 @@ def model_check(df):
                 "error": f"The column {col} shouldn't be empty",
                 "suggestion": ""
             })
-
-        elif not isinstance(value, str): 
-                issues.append({
-                    "row": index,
-                    "column": col,
-                    "value": value,
-                    "error": f"The column {col} should contain a string",
-                    "suggestion": ""
-                })
 
         else: 
             if value == "" or value.lower() == "unknown": 

@@ -18,6 +18,8 @@ st.set_page_config(
 
 
 # Initialize session state variables
+if 'initial_df' not in st.session_state:
+    st.session_state.initial_df = pd.DataFrame()
 if 'df' not in st.session_state:
     st.session_state.df = pd.DataFrame()
 if 'missing_columns_flag' not in st.session_state:
@@ -42,8 +44,10 @@ if 'ignore_df' not in st.session_state:
     st.session_state.ignore_df = pd.DataFrame()
 if 'issues_df_final' not in st.session_state:
     st.session_state.issues_df_final = pd.DataFrame()
-if 'issues_df_final' not in st.session_state:
+if 'issues_without_suggestions' not in st.session_state:
     st.session_state.issues_without_suggestions = pd.DataFrame()
+if 'issues_with_suggestions' not in st.session_state:
+    st.session_state.issues_with_suggestions = pd.DataFrame()
 
 
 def reset_state():
@@ -58,8 +62,10 @@ def reset_state():
     st.session_state.suggested_fixes = pd.DataFrame()
     st.session_state.issues_df_final = pd.DataFrame()
     st.session_state.issues_without_suggestions = pd.DataFrame()
+    st.session_state.issues_with_suggestions = pd.DataFrame()
     st.session_state.countries_issues = pd.DataFrame()
     st.session_state.ignore_df = pd.DataFrame()
+    st.session_state.initial_df = pd.DataFrame()
 
 # Add your logo at the top
 st.image("Sopht_logo.png", width=150)  # Adjust the width as needed
@@ -80,6 +86,7 @@ def update_ignore_df(new_ignore_df):
 
 
 def ignore_rows_form(rows_with_issues): 
+
     st.write("Those rows will be added to an 'ignored_rows' file that you can download at the end.")
     with st.form(key='ignore_all'):
         # Button to process ignoring rows
@@ -142,7 +149,7 @@ def replace_all_by_hand(rows_with_issues, column, type: Literal["options", "date
             edited_df = st.data_editor(
                             rows_with_issues,
                             key=f"manual_editor_{column}", 
-                            column_config={column: st.column_config.DateColumn(label=f"{column}", format="YYYY-MM-DD", required=True)}
+                            column_config={column: st.column_config.TextColumn(label=f"{column}", max_chars=10, validate="^\\d{4}-\\d{2}-\\d{2}$", required=True)}
                         )
         
         if type == "freeform":
@@ -164,8 +171,8 @@ uploaded_files = st.file_uploader("Choose CSV files", accept_multiple_files=True
 if st.button("Start/Restart"):
     reset_state()
     if uploaded_files:
-        combined_df = files_concat(uploaded_files)
-        st.session_state.df = combined_df
+        st.session_state.initial_df = files_concat(uploaded_files)
+        st.session_state.df = st.session_state.initial_df.copy()
         st.write(f"You are working on cleaning the data from these files: {[file.name for file in uploaded_files]}")
     else: 
         st.error("Please upload one or more files.")
@@ -288,6 +295,7 @@ if not st.session_state.df.empty:
             st.session_state.issues_df_final = pd.concat([st.session_state.issues_df_final, issues_df], ignore_index=True)
 
         st.session_state.issues_without_suggestions = st.session_state.issues_df_final[st.session_state.issues_df_final['suggestion'] == '']
+        st.session_state.issues_with_suggestions = st.session_state.issues_df_final[st.session_state.issues_df_final['suggestion'] != '']
 
         # Calculate global statistics
         ##[uncomment these lines for showing suggestions] cells, before correction 
@@ -298,8 +306,8 @@ if not st.session_state.df.empty:
 
         #rows, after correction 
         total_rows = len(st.session_state.df)
-        rows_with_issues = len(st.session_state.issues_without_suggestions['row'].unique())
-        percentage_rows_with_issues = (rows_with_issues / total_rows) * 100
+        len_rows_with_issues = len(st.session_state.issues_without_suggestions['row'].unique())
+        percentage_rows_with_issues = (len_rows_with_issues / total_rows) * 100
 
         # Group by error type for detailed view
         error_summary = st.session_state.issues_without_suggestions.groupby('error').size().reset_index(name='count')
@@ -316,7 +324,7 @@ if not st.session_state.df.empty:
         with col1:
             st.metric("Total Rows in your dataset", f"{total_rows:,}")
         with col2:
-            st.metric("Rows with Issues", f"{rows_with_issues:,}")
+            st.metric("Rows with Issues", f"{len_rows_with_issues:,}")
         with col3:
             st.metric("Percentage of Rows with Issues", f"{percentage_rows_with_issues:.0f}%")
 
@@ -336,12 +344,11 @@ if not st.session_state.df.empty:
         st.plotly_chart(fig)
 
         # Filter options
-        all_error_types = st.session_state.issues_df_final['error'].unique()
+        all_error_types = st.session_state.issues_without_suggestions['error'].unique()
         selected_errors = st.multiselect("Select error types to filter", options=all_error_types, default=all_error_types)
 
         # Filter issues based on selected error types
-        filtered_issues = st.session_state.issues_df_final[st.session_state.issues_df_final['error'].isin(selected_errors)]
-        filtered_issues_without_suggestions = filtered_issues[filtered_issues['suggestion'] == '']
+        filtered_issues_without_suggestions = st.session_state.issues_without_suggestions[st.session_state.issues_without_suggestions['error'].isin(selected_errors)]
 
         # Group the issues by 'row' and create the columns based on the new logic
         issue_details = (
@@ -374,6 +381,20 @@ if not st.session_state.df.empty:
             mime="text/csv",
         )
 
+        # Optionally show the full dataframe with error details
+        st.subheader("Rows with Errors that were automatically corrected (Original Data + Error Details)")
+        
+        if not st.session_state.issues_with_suggestions.empty:
+            st.write("Showing only rows with issues that were automatically corrected:")
+            st.dataframe(st.session_state.issues_with_suggestions)
+            
+            for _, row in st.session_state.issues_with_suggestions.iterrows():
+                st.session_state.df.at[row['row'], row['column']] = row['suggestion']
+            
+        else: 
+            st.write("None of the errors could be automatically corrected.")
+
+
     with tabs[2]: 
         columns_to_fix = st.session_state.issues_without_suggestions['column'].unique()
         st.markdown("<h2>Step 3: Clean your Data</h2>", unsafe_allow_html=True)
@@ -381,9 +402,9 @@ if not st.session_state.df.empty:
         
 
         if column_to_fix == "deviceCategory": 
-            st.session_state.categories_issues = st.session_state.issues_df_final[st.session_state.issues_df_final["column"] == column_to_fix]
+            st.session_state.categories_issues = st.session_state.issues_without_suggestions[st.session_state.issues_without_suggestions["column"] == column_to_fix]
             st.session_state.show_updated_df = False
-            rows_with_issues = st.session_state.df.loc[st.session_state.categories_issues['row'].tolist()]
+            rows_with_issues = df_with_issues.loc[st.session_state.categories_issues['row'].tolist()]
             problematic_categories = st.session_state.categories_issues['value'].unique()
 
             st.error("You have categories that are not allowed. Please replace those with allowed values.")
@@ -436,24 +457,21 @@ if not st.session_state.df.empty:
                 st.write(st.session_state.df)
 
         if column_to_fix in ["deviceEntryDate", "deviceRetirementDate", "devicePurchaseDate"]: 
-            st.session_state.dates_issues = st.session_state.issues_df_final[st.session_state.issues_df_final["column"] == column_to_fix]
-            suggested_fixes = st.session_state.dates_issues[st.session_state.dates_issues['suggestion'] != '']
-            manual_fixes = st.session_state.dates_issues[st.session_state.dates_issues['suggestion'] == '']
-
-            if not suggested_fixes.empty:
-                for _, row in suggested_fixes.iterrows():
-                    st.session_state.df.at[row['row'], row['column']] = row['suggestion']
-                st.success(f"Automatically fixed {len(suggested_fixes)} dates based on suggestions.")
-
-            if not manual_fixes.empty:
+            st.session_state.dates_issues = st.session_state.issues_without_suggestions[st.session_state.issues_without_suggestions["column"] == column_to_fix]
+            if not st.session_state.dates_issues.empty:
                 st.error("You have dates that weren't able to be parsed. Please review and correct them.")
-                rows_with_issues = st.session_state.df.loc[manual_fixes['row'].unique()].copy()
+                rows_with_issues = df_with_issues.loc[st.session_state.dates_issues['row'].unique()].copy()
 
-                st.markdown("### Option 1: Ignore all Problematic Rows")
+
+                st.markdown("### Option 1: Replace All Problematic By Hand")
+                replace_all_by_hand(rows_with_issues, column = column_to_fix, type = "date")
+
+                st.markdown("### Option 2: Replace All Problematic Dates by one date")
+                replace_all_form(rows_with_issues, column = column_to_fix, type = "date")
+
+                st.markdown("### Option 3: Ignore all Problematic Rows")
                 ignore_rows_form(rows_with_issues)
 
-                st.markdown("### Option 2: Replace All Problematic By Hand")
-                replace_all_by_hand(rows_with_issues, column = column_to_fix, type = "date")
 
             if st.session_state.show_updated_df:
                 st.success("Manual changes have been applied. You can proceed to the next step. Here is the updated data:")
@@ -462,8 +480,8 @@ if not st.session_state.df.empty:
 
         if column_to_fix == "country": 
             
-            st.session_state.countries_issues = st.session_state.issues_df_final[st.session_state.issues_df_final["column"] == column_to_fix]
-            rows_with_issues = st.session_state.df.loc[st.session_state.countries_issues['row'].tolist()]
+            st.session_state.countries_issues = st.session_state.issues_without_suggestions[st.session_state.issues_without_suggestions["column"] == column_to_fix]
+            rows_with_issues = df_with_issues.loc[st.session_state.countries_issues['row'].tolist()]
                 
             st.markdown("### Option 1: Ignore all Problematic Rows")
             ignore_rows_form(rows_with_issues)
@@ -477,8 +495,8 @@ if not st.session_state.df.empty:
 
         if column_to_fix == "deviceModel": 
             
-            st.session_state.models_issues = st.session_state.issues_df_final[st.session_state.issues_df_final["column"] == column_to_fix]
-            rows_with_issues = st.session_state.df.loc[st.session_state.models_issues['row'].tolist()]
+            st.session_state.models_issues = st.session_state.issues_without_suggestions[st.session_state.issues_without_suggestions["column"] == column_to_fix]
+            rows_with_issues = df_with_issues.loc[st.session_state.models_issues['row'].tolist()]
                 
             st.markdown("### Option 1: Ignore all Problematic Rows")
             ignore_rows_form(rows_with_issues)
@@ -492,8 +510,8 @@ if not st.session_state.df.empty:
 
         if column_to_fix == "deviceManufacturer": 
             
-            st.session_state.manufacturer_issues = st.session_state.issues_df_final[st.session_state.issues_df_final["column"] == column_to_fix]
-            rows_with_issues = st.session_state.df.loc[st.session_state.manufacturer_issues['row'].tolist()]
+            st.session_state.manufacturer_issues = st.session_state.issues_without_suggestions[st.session_state.issues_without_suggestions["column"] == column_to_fix]
+            rows_with_issues = df_with_issues.loc[st.session_state.manufacturer_issues['row'].tolist()]
                 
             st.markdown("### Option 1: Ignore all Problematic Rows")
             ignore_rows_form(rows_with_issues)
@@ -508,8 +526,8 @@ if not st.session_state.df.empty:
         
         if column_to_fix == "deviceSerialnumber": 
             
-            st.session_state.serial_number_issues = st.session_state.issues_df_final[st.session_state.issues_df_final["column"] == column_to_fix]
-            rows_with_issues = st.session_state.df.loc[st.session_state.serial_number_issues['row'].tolist()]
+            st.session_state.serial_number_issues = st.session_state.issues_without_suggestions[st.session_state.issues_without_suggestions["column"] == column_to_fix]
+            rows_with_issues = df_with_issues.loc[st.session_state.serial_number_issues['row'].tolist()]
                 
             st.markdown("### Option 1: Ignore all Problematic Rows")
             ignore_rows_form(rows_with_issues)
@@ -522,7 +540,40 @@ if not st.session_state.df.empty:
                 st.write(st.session_state.df)  
 
     with tabs[3]: 
-        st.markdown("<h2>Step 3: Download your Data</h1>", unsafe_allow_html=True)
+
+        st.markdown("<h2>Step 3: Download your Data</h2>", unsafe_allow_html=True)
+
+        total_rows = len(st.session_state.initial_df)
+        ignored_rows = len(st.session_state.ignore_df)
+        ignored_percentage = (ignored_rows / total_rows) * 100
+
+        # Display the percentages
+        st.metric("Percentage of Data Ignored", f"{ignored_percentage:.2f}%")
+
+        # View and download cleaned dataset
+        st.markdown("<h2>Step 3: Cleaned Data</h2>", unsafe_allow_html=True)
+        st.dataframe(st.session_state.df)
+        csv = st.session_state.df.to_csv(index=False)
+        st.download_button(
+            label="Download Cleaned Data",
+            data=csv,
+            file_name="cleaned_data.csv",
+            mime='text/csv',
+        )
+
+        # View and download cleaned dataset
+        st.markdown("<h2>Step 3: Ignored Data</h2>", unsafe_allow_html=True)
+        st.dataframe(st.session_state.ignore_df)
+        csv = st.session_state.df.to_csv(index=False)
+        st.download_button(
+            label="Download Ignored Data",
+            data=csv,
+            file_name="cleaned_data.csv",
+            mime='text/csv',
+        )
+
+
+
         
 
 
